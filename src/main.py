@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.config.settings import load_config, reset_config
 from src.data.fetcher import LotteryDataFetcher
-from src.data.cache_manager import CacheManager
 from src.analysis.traditional.ssq_analyzer import SSQAnalyzer
 from src.analysis.traditional.dlt_analyzer import DLTAnalyzer
 from src.recommendation.generator import RecommendationGenerator
@@ -51,18 +50,9 @@ def run_analysis(lottery_type: str, config: dict, test_mode: bool = False) -> bo
     
     try:
         logger.info(f"开始{lottery_type.upper()}分析...")
-        
-        # 1. 初始化缓存管理器
-        cache_manager = CacheManager(
-            cache_dir=config.get('data', {}).get('cache', {}).get('cache_dir', './data/cache'),
-            ttl_hours=config.get('data', {}).get('cache', {}).get('ttl_hours', 24)
-        )
-        
-        # 清理过期缓存
-        cache_manager.clear_expired_cache()
-        
-        # 2. 初始化数据获取器
-        fetcher = LotteryDataFetcher(config, cache_manager)
+
+        # 1. 初始化数据获取器（内部使用DataSpider管理数据）
+        fetcher = LotteryDataFetcher(config)
         
         # 3. 获取上一期开奖信息
         logger.info("获取上一期开奖信息...")
