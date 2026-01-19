@@ -18,65 +18,75 @@
 | 双色球 | 周二、四、日 21:15 | 当天12:00 |
 | 大乐透 | 周一、三、六 21:25 | 当天12:00 |
 
-## 🚀 快速开始
+## 🚀 快速开始（Fork方法）
 
-### 1. 准备工作
+### 方法一：Fork后使用（推荐⭐）
 
-确保您有以下账号和密钥：
-- 企业微信机器人 Webhook URL
-- Google Gemini API Key（首选）
-- DeepSeek API Key（备选）
+1. **Fork本项目**
+   - 点击右上角 **Fork** 按钮
+   - 选择你的GitHub账号
 
-### 2. 安装依赖
+2. **克隆到本地**
+   ```bash
+   git clone https://github.com/你的用户名/lottery_analysis_assistant.git
+   cd lottery_analysis_assistant
+   ```
 
+3. **创建配置文件**
+   ```bash
+   cp config/config.example.yaml config/config.yaml
+   ```
+
+4. **填入你的密钥**
+   编辑 `config/config.yaml`，替换以下内容：
+   ```yaml
+   ai:
+     providers:
+       gemini:
+         api_key: "YOUR_GEMINI_API_KEY"  # 填入你的Gemini API Key
+       deepseek:
+         api_key: "YOUR_DEEPSEEK_API_KEY"  # 填入你的DeepSeek API Key
+   
+   notification:
+     wechat:
+       webhook_url: "YOUR_WECHAT_WEBHOOK_URL"  # 填入你的企业微信Webhook URL
+   ```
+
+5. **安装依赖并测试**
+   ```bash
+   pip install -r requirements.txt
+   python src/main.py --lottery ssq --test  # 测试模式
+   ```
+
+6. **设置GitHub Secrets**（可选，用于自动化运行）
+   - 在仓库 Settings → Secrets and variables → Actions 中添加：
+     - `WECHAT_WEBHOOK_URL`
+     - `GEMINI_API_KEY`
+     - `DEEPSEEK_API_KEY`
+
+### 方法二：从头开始
+
+按照以下步骤操作：
 ```bash
-pip install -r requirements.txt
-```
-
-### 3. 配置
-
-复制配置模板并填写您的密钥：
-
-```bash
+git clone https://github.com/你的用户名/lottery_analysis_assistant.git
+cd lottery_analysis_assistant
 cp config/config.example.yaml config/config.yaml
-# 编辑 config/config.yaml 填入API密钥
-```
-
-或者直接编辑配置文件：
-
-```yaml
-ai:
-  providers:
-    gemini:
-      api_key: "YOUR_GEMINI_API_KEY"
-    deepseek:
-      api_key: "YOUR_DEEPSEEK_API_KEY"
-
-notification:
-  wechat:
-    webhook_url: "YOUR_WECHAT_WEBHOOK_URL"
-```
-
-### 4. 本地运行
-
-```bash
-# 测试模式（不发送实际消息）
-python src/main.py --lottery ssq --test
-
-# 实际运行（发送消息）
+# 编辑config/config.yaml填入密钥
+pip install -r requirements.txt
 python src/main.py --lottery ssq
-python src/main.py --lottery dlt
 ```
 
-## 🔧 GitHub Actions配置
+---
 
-### 1. 创建GitHub仓库
+## 📋 配置文件说明
 
-将项目推送到GitHub仓库。
+- `config/config.example.yaml` - 配置模板（已提交到GitHub）
+- `config/config.yaml` - 实际配置文件（已加入.gitignore，不会提交）
+- `.env` - 环境变量文件（已加入.gitignore）
 
-### 2. 设置Secrets
+**注意**：敏感信息不会提交到GitHub，保护你的API密钥安全！
 
-在GitHub仓库的 Settings → Secrets and variables → Actions 中添加：
+---
 
 | Secret Name | Description |
 |------------|-------------|

@@ -38,6 +38,7 @@ env/
 .env
 config.yaml
 !.env.example
+!config/config.example.yaml
 
 # Logs
 logs/
