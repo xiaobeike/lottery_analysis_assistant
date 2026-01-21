@@ -27,6 +27,10 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
                     'enabled': True,
                     'api_key': os.getenv('GEMINI_API_KEY', ''),
                     'model': 'gemini-1.5-flash',
+                    'model_fallback': 'gemini-2.0-flash-exp',  # 备选模型
+                    'request_delay': 2.0,  # 请求间隔（秒）
+                    'max_retries': 5,  # 最大重试次数
+                    'retry_delay': 5.0,  # 重试基础延时（秒）
                     'temperature': 0.7,
                     'max_output_tokens': 2048
                 },

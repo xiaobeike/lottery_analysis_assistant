@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 import logging
 
-from .gemini_client import GeminiClient
+from .gemini_client import GeminiClient, GeminiError
 from .deepseek_client import DeepSeekClient
 from .prompts import PromptTemplates
 
@@ -42,6 +42,10 @@ class AIAnalyzer:
                 client = GeminiClient(
                     api_key=api_key,
                     model=provider_config.get('model', 'gemini-1.5-flash'),
+                    model_fallback=provider_config.get('model_fallback', 'gemini-2.0-flash-exp'),
+                    request_delay=provider_config.get('request_delay', 2.0),
+                    max_retries=provider_config.get('max_retries', 5),
+                    retry_delay=provider_config.get('retry_delay', 5.0),
                     temperature=provider_config.get('temperature', 0.7)
                 )
                 # 检查 Gemini API 是否可用
@@ -80,7 +84,6 @@ class AIAnalyzer:
         Returns:
             分析结果
         """
-        # 尝试主提供商
         client = self._get_client(self.primary_provider)
         
         if client:
@@ -94,15 +97,13 @@ class AIAnalyzer:
                 if result:
                     return self._parse_analysis_result(result, lottery_type)
                     
-            except Exception as e:
-                logger.error(f"AI分析失败（{self.primary_provider}）: {e}")
+            except GeminiError as e:
+                logger.warning(f"Gemini分析失败: {e.message}，自动切换到 DeepSeek")
         
-        # 尝试备用提供商
-        backup_provider = 'deepseek' if self.primary_provider == 'gemini' else 'gemini'
-        
-        if backup_provider != self.primary_provider:
-            logger.info(f"尝试备用提供商: {backup_provider}")
-            client = self._get_client(backup_provider)
+        # Gemini 失败，自动切换到 DeepSeek
+        if self.primary_provider == 'gemini':
+            logger.info("Gemini 不可用，尝试 DeepSeek...")
+            client = self._get_client('deepseek')
             
             if client:
                 try:
@@ -116,7 +117,7 @@ class AIAnalyzer:
                         return self._parse_analysis_result(result, lottery_type)
                         
                 except Exception as e:
-                    logger.error(f"AI分析失败（{backup_provider}）: {e}")
+                    logger.error(f"DeepSeek 分析失败: {e}")
         
         logger.error("所有AI提供商都不可用")
         return None
@@ -138,7 +139,6 @@ class AIAnalyzer:
         Returns:
             推荐结果
         """
-        # 尝试主提供商
         client = self._get_client(self.primary_provider)
         
         if client:
@@ -152,14 +152,13 @@ class AIAnalyzer:
                 if result:
                     return result
                     
-            except Exception as e:
-                logger.error(f"AI推荐生成失败（{self.primary_provider}）: {e}")
+            except GeminiError as e:
+                logger.warning(f"Gemini推荐失败: {e.message}，自动切换到 DeepSeek")
         
-        # 尝试备用提供商
-        backup_provider = 'deepseek' if self.primary_provider == 'gemini' else 'gemini'
-        
-        if backup_provider != self.primary_provider:
-            client = self._get_client(backup_provider)
+        # Gemini 失败，自动切换到 DeepSeek
+        if self.primary_provider == 'gemini':
+            logger.info("Gemini 不可用，尝试 DeepSeek...")
+            client = self._get_client('deepseek')
             
             if client:
                 try:
@@ -173,7 +172,7 @@ class AIAnalyzer:
                         return result
                         
                 except Exception as e:
-                    logger.error(f"AI推荐生成失败（{backup_provider}）: {e}")
+                    logger.error(f"DeepSeek 推荐失败: {e}")
         
         return None
     
