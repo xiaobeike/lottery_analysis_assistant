@@ -46,8 +46,20 @@ class LotteryDataFetcher:
         """
         periods = periods or self.periods
 
+        # 先尝试更新到最新数据
+        logger.info(f"更新{lottery_type}到最新数据...")
+        self.spider.update_to_latest(lottery_type)
+
         # 尝试加载本地历史数据
         existing_data = self.spider.load_history(lottery_type)
+
+        # 如果本地数据不足30期，重新获取
+        if not existing_data or len(existing_data) < periods:
+            logger.info(f"本地数据不足{periods}期，重新获取...")
+            existing_data = self.spider.fetch_history(lottery_type, periods)
+            if existing_data:
+                self.spider.save_history(lottery_type, existing_data)
+
         if existing_data and len(existing_data) >= periods:
             logger.info(f"使用本地缓存数据: {lottery_type}, {len(existing_data)} 条")
             return existing_data[:periods]

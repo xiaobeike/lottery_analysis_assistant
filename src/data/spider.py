@@ -8,6 +8,7 @@ import requests
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from pathlib import Path
+from bs4 import BeautifulSoup
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,8 +16,14 @@ logger = logging.getLogger(__name__)
 
 class DataSpider:
     """500.com 数据爬虫"""
-    
-    # 基础URL
+
+    # 使用 datachart.500.com 的 API（更稳定）
+    API_URLS = {
+        'ssq': 'https://datachart.500.com/ssq/history/newinc/history.php',
+        'dlt': 'https://datachart.500.com/dlt/history/newinc/history.php'
+    }
+
+    # 基础URL（用于获取最新期号）
     BASE_URLS = {
         'ssq': 'https://kaijiang.500.com/shtml/ssq/',
         'dlt': 'https://kaijiang.500.com/shtml/dlt/'
@@ -46,39 +53,186 @@ class DataSpider:
         
         self.session = requests.Session()
         self.session.headers.update(self.headers)
-    
+
     def _random_delay(self):
         """添加随机延迟，避免被封"""
         time.sleep(self.request_delay + random.uniform(0.5, 1.5))
-    
+
     def _fetch_with_retry(self, url: str) -> Optional[str]:
         """带重试的请求"""
         for attempt in range(self.max_retries):
             try:
                 self._random_delay()
-                
+
                 response = self.session.get(url, timeout=30)
-                
+
                 # 检查状态码
                 if response.status_code == 409:
                     logger.warning(f"请求过于频繁，状态码409，尝试{attempt + 1}/{self.max_retries}")
                     time.sleep(5 * (attempt + 1))  # 递增等待时间
                     continue
-                
+
                 response.raise_for_status()
-                
+
                 # 检测编码
                 if response.encoding == 'ISO-8859-1':
                     response.encoding = 'gbk'
-                
+
                 return response.text
-                
+
             except requests.exceptions.RequestException as e:
                 logger.warning(f"请求失败，尝试{attempt + 1}/{self.max_retries}: {e}")
                 if attempt < self.max_retries - 1:
                     time.sleep(3 * (attempt + 1))
-        
+
         return None
+
+    def _parse_ssq_table(self, html: str) -> List[Dict[str, Any]]:
+        """解析双色球表格数据（datachart.500.com格式）"""
+        data_list = []
+
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+            table = soup.find('table', {'id': 'tablelist'})
+
+            if not table:
+                logger.warning("未找到双色球表格")
+                return data_list
+
+            rows = table.find_all('tr')
+
+            # 跳过表头行（前2行）
+            for row in rows[2:]:
+                cells = row.find_all('td')
+                if len(cells) < 8:
+                    continue
+
+                try:
+                    # 解析数据
+                    period = cells[0].get_text(strip=True)
+
+                    # 跳过汇总行
+                    if not period.isdigit():
+                        continue
+
+                    # 红球 (第2-7列)
+                    reds = []
+                    for i in range(1, 7):
+                        ball_text = cells[i].get_text(strip=True)
+                        if ball_text.isdigit():
+                            reds.append(int(ball_text))
+
+                    if len(reds) != 6:
+                        continue
+
+                    # 蓝球 (第8列)
+                    blue_text = cells[7].get_text(strip=True)
+                    blue = int(blue_text) if blue_text.isdigit() else 0
+
+                    # 销售额 (倒数第3列)
+                    sale_text = cells[-3].get_text(strip=True).replace(',', '')
+                    sale_amount = int(sale_text) if sale_text.isdigit() else 0
+
+                    # 开奖日期 (最后一列)
+                    date_text = cells[-1].get_text(strip=True)
+                    # 格式: 2026-01-20
+                    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', date_text)
+                    date = date_match.group(1) if date_match else ''
+
+                    data_list.append({
+                        'lottery_type': 'ssq',
+                        'period': period,
+                        'date': date,
+                        'red_balls': sorted(reds),
+                        'blue_ball': blue,
+                        'sale_amount': sale_amount,
+                        'pool_amount': 0
+                    })
+
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"解析双色球行数据失败: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"解析双色球表格失败: {e}")
+
+        return data_list
+
+    def _parse_dlt_table(self, html: str) -> List[Dict[str, Any]]:
+        """解析大乐透表格数据（datachart.500.com格式）"""
+        data_list = []
+
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+            table = soup.find('table', {'id': 'tablelist'})
+
+            if not table:
+                logger.warning("未找到大乐透表格")
+                return data_list
+
+            rows = table.find_all('tr')
+
+            # 跳过表头行（前2行）
+            for row in rows[2:]:
+                cells = row.find_all('td')
+                if len(cells) < 8:
+                    continue
+
+                try:
+                    # 解析数据
+                    period = cells[0].get_text(strip=True)
+
+                    # 跳过汇总行
+                    if not period.isdigit():
+                        continue
+
+                    # 前区 (第2-6列)
+                    fronts = []
+                    for i in range(1, 6):
+                        ball_text = cells[i].get_text(strip=True)
+                        if ball_text.isdigit():
+                            fronts.append(int(ball_text))
+
+                    if len(fronts) != 5:
+                        continue
+
+                    # 后区 (第7-8列)
+                    backs = []
+                    for i in range(6, 8):
+                        ball_text = cells[i].get_text(strip=True)
+                        if ball_text.isdigit():
+                            backs.append(int(ball_text))
+
+                    if len(backs) != 2:
+                        continue
+
+                    # 销售额 (倒数第3列)
+                    sale_text = cells[-3].get_text(strip=True).replace(',', '')
+                    sale_amount = int(sale_text) if sale_text.isdigit() else 0
+
+                    # 开奖日期 (最后一列)
+                    date_text = cells[-1].get_text(strip=True)
+                    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', date_text)
+                    date = date_match.group(1) if date_match else ''
+
+                    data_list.append({
+                        'lottery_type': 'dlt',
+                        'period': period,
+                        'date': date,
+                        'front_balls': sorted(fronts),
+                        'back_balls': sorted(backs),
+                        'sale_amount': sale_amount,
+                        'pool_amount': 0
+                    })
+
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"解析大乐通行数据失败: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"解析大乐透表格失败: {e}")
+
+        return data_list
     
     def _parse_ssq_page(self, html: str, period: str) -> Optional[Dict[str, Any]]:
         """解析双色球页面"""
@@ -253,45 +407,41 @@ class DataSpider:
             return self._parse_dlt_page(html, period)
     
     def fetch_history(self, lottery_type: str, periods: int = 30) -> List[Dict[str, Any]]:
-        """获取历史数据"""
-        history = []
-        base_url = self.BASE_URLS.get(lottery_type)
-
-        if not base_url:
+        """使用 API 获取历史数据（一次请求获取全部数据）"""
+        api_url = self.API_URLS.get(lottery_type)
+        if not api_url:
             logger.error(f"不支持的彩票类型: {lottery_type}")
-            return history
+            return []
 
-        # 获取最新期号
+        # 先获取最新期号
         latest_period = self.get_latest_period(lottery_type)
         if not latest_period:
             logger.error(f"获取{lottery_type}最新期号失败")
-            return history
+            return []
 
-        logger.info(f"获取{lottery_type}最新期号: {latest_period}")
-        
-        # 向前获取指定期数
-        for i in range(periods):
-            try:
-                period_num = int(latest_period) - i
-                period_str = str(period_num)
-                
-                url = f"{base_url}{period_str}.shtml"
-                html = self._fetch_with_retry(url)
-                
-                if html:
-                    if lottery_type == 'ssq':
-                        data = self._parse_ssq_page(html, period_str)
-                    else:
-                        data = self._parse_dlt_page(html, period_str)
-                    
-                    if data:
-                        history.append(data)
-                        logger.info(f"获取{lottery_type}{period_str}成功: {data.get('red_balls', data.get('front_balls', []))}")
-            
-            except Exception as e:
-                logger.warning(f"获取{lottery_type}{period_str}失败: {e}")
-                continue
-        
+        # 计算起始期号
+        start_period = int(latest_period) - periods + 1
+
+        # 构建 API URL
+        url = f"{api_url}?start={start_period}&end={latest_period}"
+        logger.info(f"请求{lottery_type}历史数据: {url}")
+
+        # 发送请求
+        html = self._fetch_with_retry(url)
+        if not html:
+            logger.error(f"获取{lottery_type}历史数据失败")
+            return []
+
+        # 解析数据
+        if lottery_type == 'ssq':
+            history = self._parse_ssq_table(html)
+        else:
+            history = self._parse_dlt_table(html)
+
+        # 按期号倒序（最新在前）
+        history.sort(key=lambda x: int(x.get('period', 0)), reverse=True)
+
+        logger.info(f"成功解析{lottery_type}{len(history)}期数据")
         return history
     
     def save_history(self, lottery_type: str, data: List[Dict[str, Any]]):
@@ -326,35 +476,50 @@ class DataSpider:
     
     def update_to_latest(self, lottery_type: str) -> List[Dict[str, Any]]:
         """更新到最新一期（添加新数据，删除最老数据，保持30条）"""
-        # 加载现有数据
         existing_data = self.load_history(lottery_type)
-        
-        # 获取最新期号
+
         latest_period = self.get_latest_period(lottery_type)
         if not latest_period:
             logger.error(f"无法获取{lottery_type}最新期号")
             return existing_data
-        
+
         # 检查是否已有最新数据
         if existing_data and existing_data[0].get('period') == latest_period:
             logger.info(f"{lottery_type}数据已是最新，无需更新")
             return existing_data
-        
-        # 获取最新一期数据
-        new_data = self.fetch_single(lottery_type, latest_period)
-        if not new_data:
-            logger.error(f"获取{lottery_type}{latest_period}失败")
+
+        logger.info(f"获取{lottery_type}最新一期数据...")
+
+        # 获取最新一期的数据
+        api_url = self.API_URLS.get(lottery_type)
+        if not api_url:
             return existing_data
-        
-        # 添加新数据，删除最老数据
-        updated_data = [new_data]
-        for item in existing_data[:29]:  # 保留前29条
-            updated_data.append(item)
-        
-        # 保存
+
+        # 只请求最新1期
+        url = f"{api_url}?start={latest_period}&end={latest_period}"
+        html = self._fetch_with_retry(url)
+
+        if not html:
+            logger.error(f"获取{lottery_type}最新数据失败")
+            return existing_data
+
+        # 解析最新数据
+        if lottery_type == 'ssq':
+            new_data_list = self._parse_ssq_table(html)
+        else:
+            new_data_list = self._parse_dlt_table(html)
+
+        if not new_data_list:
+            logger.error(f"解析{lottery_type}最新数据失败")
+            return existing_data
+
+        new_data = new_data_list[0]
+
+        # 添加新数据到最前面，删除最后一条，保持30条
+        updated_data = [new_data] + existing_data[:29]
+
         self.save_history(lottery_type, updated_data)
-        
-        logger.info(f"更新{lottery_type}数据完成，共{len(updated_data)}条")
+        logger.info(f"更新{lottery_type}数据完成，共{len(updated_data)}条，最新期号: {new_data['period']}")
         return updated_data
     
     def get_latest_period(self, lottery_type: str) -> Optional[str]:
